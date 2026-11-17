@@ -1,0 +1,177 @@
+Designing a Distributed Lost and Found System at Scale
+
+Imagine losing your laptop at a busy airport. Thousands of people are moving around, and someone might have already found it. However, connecting the person who lost the laptop with the person who found it is not as simple as it sounds.
+
+Now imagine building a platform that can solve this problem across multiple airports, railway stations, shopping malls, and public places, handling millions of lost and found reports.
+
+How would we design such a system?
+
+Let's explore the architecture behind a distributed Lost and Found platform.
+
+The Core Problem
+
+The platform should allow users to report lost and found items by providing descriptions, images, timestamps, and geographical locations.
+
+The challenging part is automatically identifying whether a lost item and a found item refer to the same physical object.
+
+For example, one user reports a lost black Dell laptop near Terminal 2, while another user reports finding a black computer near the same location.
+
+The descriptions are different, but both reports might refer to the same laptop.
+
+A simple database query based on exact text matching would not be sufficient.
+
+We need an intelligent matching mechanism.
+
+Designing the Architecture
+
+Instead of building everything into a single application, we can divide the platform into independent services.
+
+The API Gateway acts as the entry point and routes requests to the appropriate services.
+
+The User Service manages authentication and user information.
+
+The Lost Item Service handles lost item reports.
+
+The Found Item Service manages found item reports.
+
+The Matching Service identifies potential matches between lost and found items.
+
+The Notification Service sends alerts when potential matches are identified.
+
+The Verification Service handles ownership verification before an item is returned.
+
+The Search Service provides geographical and text-based search capabilities.
+
+Each service owns its business logic and communicates with other services through REST APIs or asynchronous events.
+
+## How Does the Matching Engine Work?
+
+This is where the actual engineering challenge begins.
+
+Comparing every lost item against every found item would become extremely expensive as the platform grows.
+
+Instead, we can implement a multi-stage matching approach.
+
+First, we perform candidate filtering.
+
+We filter reports based on geographical proximity, time difference, item category, brand, and color.
+
+For example, if someone loses a laptop at Terminal 2, we initially search for found laptops reported within a nearby geographical region and a relevant time window.
+
+Next, we calculate a similarity score.
+
+We can assign different weights to location, timestamp, category, brand, color, and description similarity.
+
+A weighted scoring algorithm helps us identify the most relevant candidates.
+
+For more advanced matching, we can introduce machine learning models and image embeddings.
+
+Even if two users upload different photographs of the same laptop, an image similarity model can identify visual similarities.
+
+The matching engine generates potential matches rather than automatically declaring ownership.
+
+Handling Large-Scale Geographical Searches
+
+Searching through millions of records for every incoming report is not scalable.
+
+We need an efficient indexing strategy.
+
+We can use Elasticsearch or OpenSearch for text search and geographical filtering.
+
+For geographical indexing, we can use Geohashing or H3 indexing to divide locations into smaller geographical cells.
+
+When a lost item is reported, the system searches only relevant geographical cells instead of scanning the entire database.
+
+PostgreSQL stores permanent application records, while Redis can cache frequently accessed search results.
+
+Images can be stored in object storage such as Amazon S3, with their references maintained in the database.
+
+ Introducing Kafka for Asynchronous Processing
+
+Matching should not happen inside the original HTTP request.
+
+Imagine a user submitting a report while thousands of other users are doing the same thing.
+
+If the API waits for the complete matching process, response times will increase significantly.
+
+Instead, we can introduce Kafka.
+
+When a user submits a lost item report, the Lost Item Service stores the report in PostgreSQL and publishes a LostItemCreated event.
+
+The Matching Service consumes this event and searches for potential matches.
+
+Once matching is completed, it stores the results and publishes a MatchFound event.
+
+The Notification Service consumes this event and notifies the relevant users.
+
+This architecture decouples the services and allows matching to scale independently.
+
+We can also implement the Transactional Outbox Pattern to avoid inconsistencies between database transactions and event publishing.
+
+Solving Concurrency Problems
+
+Consider a situation where two people attempt to claim the same found item.
+
+If we do not handle concurrency correctly, both requests might get approved.
+
+We can solve this using database transactions, optimistic locking, and conditional updates.
+
+For example, an item can move through the following states:
+
+REPORTED, MATCHED, CLAIM_PENDING, VERIFIED, and RETURNED.
+
+When a claim is approved, the system performs a conditional update.
+
+Only one transaction should successfully change the item from CLAIM_PENDING to VERIFIED.
+
+We can additionally use unique constraints and idempotency keys to prevent duplicate requests.
+
+Preventing Fraud and Verifying Ownership
+
+Finding a matching description does not mean that the claimant is the actual owner.
+
+Before returning an item, the system needs an ownership verification mechanism.
+
+For valuable items, users might be asked to provide a serial number, purchase receipt, or a unique identifying feature.
+
+The Verification Service evaluates the submitted evidence before approving the claim.
+
+Sensitive information should never be exposed in public item listings.
+
+Database Design
+
+We can begin with a relational database containing the following entities:
+
+Users: Stores user information and authentication details.
+
+Items: Stores item descriptions, categories, locations, timestamps, and current status.
+
+Item Images: Stores image references associated with each item.
+
+Potential Matches: Stores matching item IDs, similarity scores, and match statuses.
+
+Claims: Stores ownership claims and verification information.
+
+These entities provide a foundation that can be extended as the platform grows.
+
+What Makes This System Difficult?
+
+The real challenge is not simply storing lost and found reports.
+
+It is connecting two independent users through potentially incomplete information while maintaining accuracy, performance, and security.
+
+We need to consider geographical indexing, intelligent matching, asynchronous processing, concurrency control, event reliability, and fraud prevention.
+
+Each of these problems introduces a different system design challenge.
+
+Final Thoughts
+
+A distributed Lost and Found platform is a good example of how multiple backend engineering concepts come together to solve a real-world problem.
+
+It combines microservices, Kafka, geospatial indexing, Redis, machine learning, database transactions, and distributed system reliability.
+
+The most important design decision is to separate report submission from the expensive matching process.
+
+This allows the platform to remain responsive while matching workloads scale independently.
+
+Sometimes, the most interesting system design problems are not about building another e-commerce or social media application. They are about solving everyday problems at a scale where simple solutions are no longer enough.
